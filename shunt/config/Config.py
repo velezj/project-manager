@@ -23,26 +23,28 @@ class ConfigurationSpecification( object ):
     # arguments into self.add_option( **arg[i] )
     def __init__( self,
                   *options,
-                  root="",
+                  name="",
                   description=None,
+                  parent_spec=None,
                   error_on_duplicates = True,
                   allow_extra_options=False,
                   **common_attributes ):
-        self.root = root
+        self.name = name
         self.error_on_duplicates = error_on_duplicates
         self.description = description
         self.allow_extra_options = allow_extra_options
         self.options = {}
         self.subspecs = {}
+        self.parent_spec = parent_spec
         for opt in options:
             self.add( *opt, **common_attributes )
 
     ##
     # Add an option to this specification
     def add_option( self, *args, **attributes ):
-        opt = ConfigurationOption( *args, **attributes )
+        opt = ConfigurationOption( *args, spec=self, **attributes )
         if self.error_on_duplicates and opt.name in self.options:
-            raise InvalidArgument( "Configuration option '{0}' already added in this specifications as '{1}'".format( opt.name, self.options[ opt.name ] ) )
+            raise ValueError( "Configuration option '{0}' already added in this specifications as '{1}'".format( opt.name, self.options[ opt.name ] ) )
         self.options[ opt.name ] = opt
         return self
 
@@ -54,11 +56,12 @@ class ConfigurationSpecification( object ):
         spec.update_attributes( attributes )
 
         # check if duplicate and error if wanted
-        if self.error_on_duplicates and spec.root in self.specs:
-            raise InvalidArgument( "Configuration sub-specification '{0}' already added in this specification as '{1}'".format( spec.root, self.specs[spec.root] ) )
+        if self.error_on_duplicates and spec.name in self.specs:
+            raise InvalidArgument( "Configuration sub-specification '{0}' already added in this specification as '{1}'".format( spec.name, self.specs[spec.name] ) )
 
         # add teh spec and return
-        self.specs[ spec.root ] = spec
+        self.specs[ spec.name ] = spec
+        spec.parent_spec = self
         return self
 
     ##
@@ -86,6 +89,26 @@ class ConfigurationSpecification( object ):
         # return self
         return self
 
+
+    ##
+    # Returns the path of this specification from the given
+    # specification.
+    # If this specification is not a sub-specification of given
+    # returns None, else returns the ordered list of the
+    # path from hte given specification down to this specification.
+    # The list incldues the actual ConfigurationSpecification objects
+    def path_from_specification( self, spec ):
+        if spec is None:
+            return None
+        if self is spec:
+            return []
+        if self.parent_spec is None:
+            return None
+        parent_path = self.parent_path.path_from_specification( spec )
+        if parent_path is None:
+            return None
+        return parent_path + [self]
+
 ##=========================================================================
 
 ##
@@ -107,16 +130,31 @@ class ConfigurationOption( object ):
 
     DEFAULT_AGGREGATE = AGGREGATE_FUNCTIONS[ 'last_wins' ]
 
+    TYPES = {
+        'string' : unicode,
+        'int' : int,
+        'float' : float,
+        'list' : list,
+        'tuple' : tuple,
+        'dict' : dict,
+    }
+
+    DEFAULT_TYPE_CLASS = TYPES[ 'string' ]
+
     ##
     # Creates a new configuration option with the
     # given name and attributes
-    def __init__( self, name, **attributes ):
+    def __init__( self, name, spec, **attributes ):
         self.name = name
+        self.spec = spec
         self.attributes = attributes
         self.required = None
         self.description = None
         self.aggregate_type = None
         self.aggregate_function = None
+        self.initial_value = None
+        self.type_type = None
+        self.type_class = None
         self.update_attributes( attributes )
 
     ##
@@ -135,8 +173,17 @@ class ConfigurationOption( object ):
         self.aggregate_function = AGGREGATE_FUNCTIONS.get(
             self.aggregate_type,
             DEFAULT_AGGREGATE )
-        
-        
+        self.initial_value = self.attributes.get( 'initial_value', None )
+        self.type_type = self.attributes.get( 'type', 'string' )
+        self.type_class = TYPES.get( self.type_type, DEFAULT_TYPE_CLASS )
+
+    ##
+    # Returns the path from this option to the given specification
+    def path_from_specification( self, spec ):
+        spec_path = self.spec.path_from_specification( spec )
+        if spec_path is None:
+            return None
+        return spec_path + [ self.name ]
 
 ##=========================================================================
 ##=========================================================================
@@ -148,12 +195,109 @@ class ConfigurationOption( object ):
 #
 # The configuration is filled in by different methods from different
 # sources using it's specification to validate
-class Configuration
+class Configuration( object ):
+
+
+    ##
+    # Initialzie a configuration with a specification
+    def __init__( self, specification ):
+        self.specification = specification
+        self.data = {}
+        self._populate_data_levels()
+
+    ##
+    # Fill the given specification option with the given value
+    def fill_option( self, option, value ):
+
+        # grab any previous value aggragated for hte option
+        acum = self.get_option( option,
+                                option.initial_value )
+
+        # ok, aggragate the new value
+        option_value = option.type_class( value )
+        agg = option.aggregate_function( option_value, acum )
+
+        # set the option value
+        self._set_option_value( option, agg )
+
+    ##
+    # Returns hte option value if set.
+    # If not set returns the given default argument.
+    # If option is not a part of this specification this is
+    # an error and an exception is raised
+    def get_option( self, option, default ):
+        path = option.path_from_specification( self.specification )
+        if path is None or len(path) < 1:
+            raise ValueError( "Tried to fetch option value for an option which is not part of a Configuration's Specification. option.name={option.name}".format( option = option ) )
+        hmap_get( self.data, map(lambda p: p.name, path), default )
+
+    ##
+    # Set the value for an option.
+    # This is an internal method.
+    #
+    # The path to set is computed from the specification and
+    # the option, and the value is stored there
+    def _set_option_value( self, option, value ):
+        path = option.path_from_specification( self.specification )
+        if path is None or len(path) < 1:
+            raise ValueError( "Tried to internally set option value for an option which is not part of a Configuration's Specification. option.name={option.name}".format( option = option ) )
+        hmap_set( self.data, map(lambda p: p.name, path), value )
+
 
 ##=========================================================================
+
+##
+# Traverse a hiearchical map (dict of dict) structure with a path
+# (a list of keys).
+# This will return the parent dictionary and key for the last
+# item in the path or None,None if the path is not valid
+#
+# This will *change* the given hmap (potentially) since it will
+# *create* the hmap structure down the path if it was not
+# previously created in the hmap
+def hmap_probe( hmap, path ):
+    if path is None or hmap is None or len(path) < 1:
+        return None, None
+    if len(path) == 1:
+        return hmap, path[0]
+    if path[0] not in hmap:
+        hmap[ path[0] ] = {}
+    return hmap_traverse( hmap[ path[0] ], path[1:] )
+
 ##=========================================================================
+
+##
+# Get the value for a path from an hmap
+# Or returns the given default value.
+# This may change the given hmap by probing it.
+def hmap_get( hmap, path, default ):
+    node, key = hmap_probe( hmap, path )
+    if not is None or key not in node:
+        return default
+    return node[ key ]
+
 ##=========================================================================
+
+##
+# Sets the value of the given path in an hmap to the
+# given value.
+# This will create the path layers if need be
+def hmap_set( hmap, path, value ):
+    node, key = hmap_probe( hmap, path )
+    if node is None:
+        raise ValueError( "Could not probe hmap, returned None. This usually means that the hmap itself was None!" )
+    old = node.get( key, None )
+    node[ key ] = value
+    return old
+
 ##=========================================================================
+
+##
+# returns true if the given path has a set value in the given hmap
+def hmap_has_path( hmap, path ):
+    node, key = hmap_probe( hmap_probe, path )
+    return node is not None and key in node
+
 ##=========================================================================
 ##=========================================================================
 ##=========================================================================
