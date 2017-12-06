@@ -245,60 +245,6 @@ class Configuration( object ):
 
 
 ##=========================================================================
-
-##
-# Traverse a hiearchical map (dict of dict) structure with a path
-# (a list of keys).
-# This will return the parent dictionary and key for the last
-# item in the path or None,None if the path is not valid
-#
-# This will *change* the given hmap (potentially) since it will
-# *create* the hmap structure down the path if it was not
-# previously created in the hmap
-def hmap_probe( hmap, path ):
-    if path is None or hmap is None or len(path) < 1:
-        return None, None
-    if len(path) == 1:
-        return hmap, path[0]
-    if path[0] not in hmap:
-        hmap[ path[0] ] = {}
-    return hmap_traverse( hmap[ path[0] ], path[1:] )
-
-##=========================================================================
-
-##
-# Get the value for a path from an hmap
-# Or returns the given default value.
-# This may change the given hmap by probing it.
-def hmap_get( hmap, path, default ):
-    node, key = hmap_probe( hmap, path )
-    if not is None or key not in node:
-        return default
-    return node[ key ]
-
-##=========================================================================
-
-##
-# Sets the value of the given path in an hmap to the
-# given value.
-# This will create the path layers if need be
-def hmap_set( hmap, path, value ):
-    node, key = hmap_probe( hmap, path )
-    if node is None:
-        raise ValueError( "Could not probe hmap, returned None. This usually means that the hmap itself was None!" )
-    old = node.get( key, None )
-    node[ key ] = value
-    return old
-
-##=========================================================================
-
-##
-# returns true if the given path has a set value in the given hmap
-def hmap_has_path( hmap, path ):
-    node, key = hmap_probe( hmap_probe, path )
-    return node is not None and key in node
-
-##=========================================================================
 ##=========================================================================
 ##=========================================================================
 ##=========================================================================

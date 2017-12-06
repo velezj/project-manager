@@ -11,6 +11,9 @@ numpy = "*"
 sklearn = "*"
 scipy = "*"
 ipython = "*"
+"jinja2" = "*"
+pyaml = "*"
+hy = "*"
 
 
 [dev-packages]
