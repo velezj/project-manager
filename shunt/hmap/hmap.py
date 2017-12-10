@@ -12,7 +12,7 @@ import yaml
 # Interface functions for Hiearchichal Maps (hmaps)
 # which are jsut dictionaries-of-dictionaries :)
 
-DIRECTIVE_PREFIX = '@'
+
 TEMPLATE_HANDLEBAR_START = "{{"
 TEMPLATE_HANDLEBAR_END = "}}"
 JINJA_VARIABLE_KEY = "_"
@@ -150,13 +150,6 @@ def resolve_structured_keys( hmap, delim='/' ):
 ##============================================================================
 
 ##
-# Returns true iff the given object denotes a directive
-def is_directive( x ):
-    return isinstance( x, str ) and x.startswith( DIRECTIVE_PREFIX )
-
-##============================================================================
-
-##
 # Returns true iff the given object does not have any free variables
 # (which are template {{ }} handlebar slots) in it
 def has_free_variables( x ):
@@ -169,185 +162,13 @@ def has_free_variables( x ):
 
 ##============================================================================
 ##============================================================================
-
-##
-# Parses out the directives in an hmap which themselves do not have
-# any free variables
-def extract_directives_without_free_variables( parse_state ):
-
-    # ok, we will go over all the possible values of
-    # the hmap and parse any directives
-    directives = []
-    for path, value in hmap_paths( parse_state.hmap ):
-        if is_directive( value ) and not has_free_variables( value ):
-            directives.append( parse_directive( path, value, parse_state ) )
-
-    return directives
-
 ##============================================================================
-##============================================================================
-
-##
-# Parse a directive
-def parse_directive( path, value, parse_state ):
-
-    # ok, parse by grabbing single directive token
-    # and looking up parser in parse_state
-    tokens = value.split(' ',1)
-    directive = tokens[0][1:].lower()
-
-    parser = parse_state.get_directive_parser( directive, parser_state.DEFAULT_DIRECTIVE_PARSER )
-    if parser is None:
-        msg = "Cannot parse directive '{0}' at path '{1}' with value '{2}'"
-        msg.format( directive, path, value )
-        line_info = parse_state.get_line_info_for_path( path )
-        msg += " " + line_info_message( line_info )
-        logger.error( msg )
-        raise RuntimeError( msg )
-
-    # ok, just parse the directive value and return the parsed
-    return parser( directive, parse_state, path, tokens[1] )
-    
-
 ##============================================================================
 ##============================================================================
 ##============================================================================
 ##============================================================================
 
-##
-# The default directive parser only knowns of one directive: include
-def _default_directive_parser( directive, parse_state, path, argument ):
-    if directive != 'include':
-        msg = "Unknown directive '{0}' at path '{1}' value '{2}'".format(
-            directive,
-            path,
-            value )
-        line_info = parse_state.get_line_info_for_path( path )
-        msg += " " + line_info_message( line_info )
-        logger.error( msg )
-        raise RuntimeError( msg )
-
-    # make sure our argument has no free variables
-    if has_free_variables( argument ):
-        msg = "Unable to parse 'include' directive with free variables in argument: '{0}'".format( argument ) + line_info_message( parse_state.get_line_info_for_path( path ) )
-        logger.error( msg )
-        raise RuntimeError( msg )
-
-    # ok, make sure that argumetn is a single path argument
-    try:
-        include_path = check_and_parse_single_path( argument, parse_state, path )
-    except Exception as e:
-        msg = "Unable to parse 'include' directive path argument '{0}'".format(
-            argument ) + line_info_message( parse_state.get_line_info_for_path( path ) )
-        logger.error( msg )
-        raise RuntimeError( msg ) from e
-
-    # ok, create the directive
-    return IncludeDirective(
-        parse_state,
-        path,
-        include_path )
-
 ##============================================================================
-
-##============================================================================
-##============================================================================
-
-##
-# The parser state is a class that accumulates states for the
-# directive parsers (and other parsers maybe)
-#
-# This includes the hmap as well as line_information and
-# any directive parsers eing used
-class ParseState( object ):
-
-    ##
-    # The default directive parser
-    DEFAULT_DIRECTIVE_PARSER = _default_directive_parser
-
-    ##
-    # Create a new parse state
-    def __init__( self,
-                  hmap,
-                  line_info = None,
-                  parent = None):
-        self.hmap = hmap
-        self.line_info = line_info
-        self.parent = parent
-
-    ##
-    # returns hte line information for a path if any or None
-    def get_line_info_for_path( self, path ):
-        if self.line_info is None:
-            return None
-        return hmap_get( self.line_info, path, None )
-        
-
-    ##
-    # returns the parser for a directive
-    def get_directive_parser( self, directive, default ):
-        return default
-
-##============================================================================
-
-##
-# A line information class which contains the line number, column,
-# and raw index ranges for a particular section of an hmap
-class LineInformation( object ):
-    def __init__( self,
-                  start_line,
-                  stop_line,
-                  start_char,
-                  stop_char,
-                  start_byte,
-                  stop_byte ):
-        self.start_line = start_line
-        self.stop_line = stop_line
-        self.start_char = start_char
-        self.stop_char = stop_char
-        self.start_byte = start_byte
-        self.stop_byte = stop_byte
-
-##============================================================================
-
-##
-# Returns a human readable message for hte line information given.
-# If given a None will return "<no_line_info>" so is safe to
-# call with None values
-def line_info_message( line_info ):
-    if line_info is None:
-        return "<no_line_info>"
-    s = "At "
-    if line_info.start_line is not None:
-        s += "lines {0}-{1} ".format(
-            line_info.start_line,
-            line_info.stop_line )
-    if line_info.start_char is not None:
-        s += "characters {0}-{1} ".format(
-            line_info.start_char,
-            line_info.stop_char )
-    if line_info.start_byte is not None:
-        s += "bytes {0}-{1}".format(
-            line_info.start_byte,
-            line_info.stop_byte )
-    if line_info.start_line is None and line_info.start_char is None and line_info.start_byte is None:
-        s += "<empty_line_info>"
-    return s
-
-##============================================================================
-##============================================================================
-##============================================================================
-
-##
-# Make sure given string has a single path arugment in it and
-# return it
-def check_and_parse_single_path( x, parse_state, path ):
-    if not isinstance( x, str ):
-        msg = "Excepted string, got {0}".format( type(x) )
-        logger.error( msg )
-        raise RuntimeError( msg )
-
-    return x
 
 ##============================================================================
 ##============================================================================
@@ -365,7 +186,7 @@ def resolve_free_variables( parse_state, template_context ):
     hmap_with_jinja_vars = add_jinja_variable_nodes( parse_state.hmap, template_context )
 
     # write out the resulting hmap's YAML
-    with tempfile.NamedTemporaryFile( mode='w', prefix='shunt-pre-resolve_', delete=False ) as f:
+    with tempfile.NamedTemporaryFile( mode='w', prefix='shunt-pre-resolve_') as f:
         f.write( yaml.dump( hmap_with_jinja_vars ) )
         f.flush()
         logger.info( "dumping pre-resolve into '{0}'".format( f.name ) )
@@ -503,13 +324,11 @@ DEFAULT_TEMPLATE_CONTEXT = TemplateContext()
 ##============================================================================
 ##============================================================================
 ##============================================================================
-
-def parse_yaml( filename, parent=None ):
-    with open(filename) as f:
-        return ParseState(
-            yaml.load(f),
-            parent = parent )
-
+##============================================================================
+##============================================================================
+##============================================================================
+##============================================================================
+##============================================================================
 ##============================================================================
 ##============================================================================
 ##============================================================================
