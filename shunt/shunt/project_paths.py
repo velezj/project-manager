@@ -1,14 +1,13 @@
-import logging
-logger = logging.getLogger( __name__ )
+import logutils
+logger = logutils.getLogger( __name__ )
 
 import pathlib
-
-import yaml
+import shuntfile
 
 ##============================================================================
 
-SHUNT_FILENAME = "Shuntfile"
 TEMPLATE_FOLDER_NAME = "shunts"
+MATERIALIZE_FOLDER_NAME = "materialized_views"
 
 ##============================================================================
 
@@ -37,11 +36,10 @@ def find_all_template_paths( start_path = '.' ):
 ##
 # Extract hte explicitly set template paths from the shutnfile
 def extract_template_paths_from_shuntfile( shuntfile_path ):
-    with open( shuntfile_path ) as f:
-        d = yaml.load( f )
-        if d is None:
-            return []
-        return d.get( 'project', {}).get( 'shunt_paths', [] )
+    return shuntfile.shuntfile_get(
+        shuntfile.load_shuntfile( shuntfile_path ),
+        [ 'project', 'shunt_paths' ],
+        [] )
 
 ##============================================================================
 
@@ -56,12 +54,12 @@ def find_shunt_root_path( start_path, original_start_path=None ):
 
     # ok, see if there is a Shuntfile at starting path
     start_path_p = pathlib.Path( start_path ).resolve()
-    if ( start_path_p / SHUNT_FILENAME ).exists():
-        return start_path_p.as_posix(), ( start_path_p / SHUNT_FILENAME ).as_posix()
+    if ( start_path_p / shuntfile.SHUNT_FILENAME ).exists():
+        return start_path_p.as_posix(), ( start_path_p / shuntfile.SHUNT_FILENAME ).as_posix()
 
     parent = start_path_p.resolve().parent
     if parent is None or parent == start_path_p or parent == pathlib.Path():
-        msg = "Unable ti find a '{0}' file in ancestry of starting path '{1}' (real '{2}'). This usually means the file is missing for running the shunt system, or it has been started from hte wrong working idrectory!".format( SHUNT_FILENAME, original_start_path, pathlib.Path( original_start_path ).resolve().as_posix() )
+        msg = "Unable ti find a '{0}' file in ancestry of starting path '{1}' (real '{2}'). This usually means the file is missing for running the shunt system, or it has been started from hte wrong working idrectory!".format( shuntfile.SHUNT_FILENAME, original_start_path, pathlib.Path( original_start_path ).resolve().as_posix() )
         raise RuntimeError( msg )
     return find_shunt_root_path( parent.as_posix(), original_start_path=original_start_path )
     
@@ -94,6 +92,28 @@ def find_all_template_paths_from_root( root_path, prefix=None ):
     return template_paths
 
 ##============================================================================
+
+##
+# Returns the materialization path for a shuntfile given the
+# shutnfile object and a list of parent shuntfiles (may be None)
+def materialize_path( sf, parents ):
+
+    # ok, check if this shuntfile has a setting itself
+    mpath = shuntfile.shuntfile_get( sf, ['project','materialize_path'], None )
+    if mpath is not None:
+        mpath = pathlib.Path( mpath )
+        if not mpath.is_absolute():
+            return mpath.relative_to( sf.path ).resolve().as_posix()
+        return mpath.resolve().as_posix()
+
+    # ok, no explicit path defined, check parents
+    if parents is not None and len(parents) > 0:
+        return materialize_path( parents[0], parents[1:] )
+
+    # ok, now explicit and now parents, materialize to default
+    # locations
+    return ( pathlib.Path( sf.path ).parent / MATERIALIZE_FOLDER_NAME ).resolve().as_posix()
+
 ##============================================================================
 ##============================================================================
 ##============================================================================
