@@ -7,6 +7,7 @@ import shuntfile
 import pathlib
 import os
 import os.path
+import subprocess
 
 import jinja2
 
@@ -64,6 +65,13 @@ def _materialize_view( template_paths,
                        materialize_path,
                        view_name ):
 
+    # ok, we want to take the template paths and process any which
+    # need processing.
+    # This is because we allow git,s3 and other URL type paths.
+    template_paths = [ _materialize_path( p,
+                                          materialize_path )
+                       for p in template_paths ]
+
     # ok, create a jinja2 environment with the given template paths
     env = jinja2.Environment(
         loader = jinja2.FileSystemLoader( template_paths,
@@ -91,6 +99,89 @@ def _materialize_view( template_paths,
         view_name ) )
 
     return mpath
+
+##============================================================================
+
+##
+# Given a path and a materialize_path,
+# materializes any paths needed and returns the resulting set of path.
+#
+# This handles URL/URI style paths by downloading them (recursively)
+# into the materialize_path if the materialize_path does not exists
+def _materialize_path( path,
+                        materialize_path,
+                        force=False ):
+
+    # string paths are trated as already materialized
+    if isinstance( path, str ):
+        return path
+
+    # ok, ensure that path is astructure
+    if not isinstance( path, dict ):
+        msg = "Invalid path object. Expected string or dictionary but got type={0} '{1}'".format(
+            type(path),
+            path )
+        raise ValueError( msg )
+
+    # makre sure we at least have a source and destination
+    if 'source' not in path or 'destination' not in path:
+        msg = "Malformed path object. Paths need to have 'source' and 'destination' keys defined. Path = '{0}'".format( path )
+        raise ValueError( msg )
+
+    # ok, lookup the source
+    source = path['source']
+    if source not in KNOWN_PATH_MATERIALIZATION_SOURCES:
+        msg = "Invalid path source '{0}'. We don't know how to materialize such a path".format( source )
+        raise ValueError( msg )
+
+    # check if destination already there and not forcing
+    if ( pathlib.Path( materialize_path ) / path['destination'] ).exists() and not force:
+        logger.info( "Skipping materialization of path '{0}' because destination exists and not forcing".format( path ) )
+        return ( pathlib.Path(materialize_path) / path['destination'] ).resolve().as_posix()
+
+    # ok, grab the materialzer and run it
+    return KNOWN_PATH_MATERIALIZATION_SOURCES[ source ]( path,
+                                                         materialize_path,
+                                                         force = force )
+
+##============================================================================
+
+##
+# Materialzie a git path
+def _git_materialize_path( path,
+                           materialize_path,
+                           force=False ):
+
+    logger.info( "Materializing GIT path: '{0}' into '{1}'".format(
+        path, materialize_path ) )
+    donep = subprocess.run( ['git','clone'] + path['args'],
+                            cwd = materialize_path,
+                            check = True )
+    return (pathlib.Path(materialize_path) / path['destination'] ).resolve().as_posix()
+    
+##============================================================================
+
+##
+# Materialzie an s3 path
+def _s3_materialize_path( path,
+                          materialize_path,
+                          force=False ):
+
+    logger.info( "Materializing S3 path: '{0}' into '{1}'".format(
+        path, materialize_path ) )
+    donep = subprocess.run( ['aws','s3'] + path['args'],
+                            cwd = materialize_path,
+                            check = True )
+    return (pathlib.Path(materialize_path) / path['destination'] ).resolve().as_posix()
+
+##============================================================================
+
+##
+# A mapping from source to path materalizer function for paths
+KNOWN_PATH_MATERIALIZATION_SOURCES = {
+    'git' : _git_materialize_path,
+    's3' : _s3_materialize_path,
+}
 
 ##============================================================================
 
