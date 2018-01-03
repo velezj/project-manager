@@ -1,0 +1,26 @@
+{% import "variables" as variables %}
+{
+    "variables" : {
+    },
+    "builders" : [{
+	"type" : "virtualbox-ovf",
+	"source_path" : "controller.ovf",
+	"ssh_username" : "{{ variables.controller_username }}",
+	"ssh_password" : "{{ variables.controller_password }}",
+	"shutdown_command" : "echo '{{ variables.controller_password }}' | sudo -S shutdown -h now",
+	"headless" : true
+    }],
+    "provisioners" : [
+	{
+	    "type" : "shell",
+	    "execute_command" : "echo '{{ variables.controller_password }}' | {% raw %} sudo -S sh -c '{{ .Vars }} {{ .Path }}' {% endraw %}",
+	    "inline" : [
+		"sleep 10",
+		"apt-add-repository -y ppa:ansible/ansible",
+		"apt-get -y update",
+		"apt-get -y install ansible"
+	    ]
+	}
+    ]
+    
+}

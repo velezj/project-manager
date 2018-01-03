@@ -1,0 +1,2 @@
+{% set controller_username = "projectmanager" %}
+{% set controller_password = "lowgrade" %}

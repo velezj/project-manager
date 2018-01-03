@@ -1,0 +1,1 @@
+{% extends "packer-controller-base.json" %}

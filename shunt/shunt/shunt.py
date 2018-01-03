@@ -8,6 +8,7 @@ import pathlib
 import os
 import os.path
 import subprocess
+import shutil
 
 import jinja2
 
@@ -27,6 +28,29 @@ def materialize_views( shuntfile_path, parents = None ):
     validate_shuntfile( sf )
     logger.info( "Shuntfile at '{0}' valid!".format( shuntfile_path ) )
 
+    # ensure materiale directory
+    materialize_path = project_paths.materialize_path( sf, parents )
+    materialize_path = ensure_path( materialize_path )
+
+    # ok, we want to take the template paths and process any which
+    # need processing.
+    # This is because we allow git,s3 and other URL type paths.
+    logger.info( "Materializing template paths" )
+    template_paths = project_paths.find_all_template_paths(shuntfile_path)
+    template_paths = [ _materialize_path( p,
+                                          materialize_path )
+                       for p in template_paths ]
+
+
+    # ok, grab all of the resources and copy them
+    logger.info( "Copying resources" )
+    for res in shuntfile.shuntfile_get( sf, ['project','resources'], [] ):
+
+        # copy the resource
+        _copy_resource( template_paths,
+                        materialize_path,
+                        res )
+
     # now, grab all of the wanted views
     logger.info( "Materializing views" )
     for view in shuntfile.shuntfile_get( sf, ['project','views'], [] ):
@@ -34,8 +58,8 @@ def materialize_views( shuntfile_path, parents = None ):
         # materialize the view
         logger.info( "Materialize view '{0}'".format( view ) )
         res = _materialize_view(
-            project_paths.find_all_template_paths(shuntfile_path),
-            project_paths.materialize_path( sf, parents ),
+            template_paths,
+            materialize_path,
             view )
         logger.info( "Materialized '{0}' to '{1}'".format(
             view, res ) )
@@ -65,12 +89,7 @@ def _materialize_view( template_paths,
                        materialize_path,
                        view_name ):
 
-    # ok, we want to take the template paths and process any which
-    # need processing.
-    # This is because we allow git,s3 and other URL type paths.
-    template_paths = [ _materialize_path( p,
-                                          materialize_path )
-                       for p in template_paths ]
+
 
     # ok, create a jinja2 environment with the given template paths
     env = jinja2.Environment(
@@ -81,14 +100,6 @@ def _materialize_view( template_paths,
 
     # grab the template file using hte view name
     template = env.get_template( view_name )
-
-    # create directory if need be
-    materialize_path = pathlib.Path( materialize_path ).resolve()
-    if not materialize_path.exists():
-        materialize_path.mkdir( parents=True )
-        materialize_path = materialize_path.as_posix()
-        logger.info( "  creating materialziation directiry: '{0}'".format(
-            materialize_path ) )
 
     # ok, render hte template to a file with the name
     mpath = ( pathlib.Path( materialize_path ) / view_name ).resolve().as_posix()
@@ -192,7 +203,93 @@ def validate_shuntfile( sf ):
     pass
 
 ##============================================================================
+
+##
+# Copy a resource into hte materialization path
+def _copy_resource( template_paths,
+                    materialize_path,
+                    res ):
+
+    # get source path
+    source_path = None
+    if isinstance( res, str ):
+        source_path = pathlib.Path( res )
+    else:
+        source_path = res.get( 'source', None )
+
+    # resolve the source path to an actual path of a resource that exists
+    source_path = resolve_path( template_paths,
+                                source_path )
+    if source_path is None:
+        msg = "Unable to copy resource '{0}': path does not exists in any of {1}".format( res, template_paths )
+        raise ValueError( msg )
+
+    # get hte target path
+    target_path = None
+    if isinstance( res, str ):
+        target_path = res
+    else:
+        target_path = res.get( "target", None )
+    if target_path is None:
+        msg = "Unable to copy resource '{0}', target path is not defined".format(res)
+        raise ValueError( msg )
+
+    # resolve the target path
+    if pathlib.Path( target_path ).is_absolute():
+        target_path = pathlib.Path( materialize_path ).joinpath( pathlib.Path( target_path ).name ).resolve().as_posix()
+    else:
+        target_path = pathlib.Path( materialize_path ).joinpath( target_path ).resolve().as_posix()
+
+    # ok, copy the file
+    shutil.copyfile( source_path,
+                     target_path )
+    logger.info( "copied resource '{0}' TO -> '{1}'".format(
+        source_path,
+        target_path ) )
+
 ##============================================================================
+
+##
+# Given a set of paths and a relative path,
+# searches the paths in order and returns the first which includes
+# a file or directory at the given relative path
+def resolve_path( paths,
+                  relative_path ):
+
+    # check arguments for None which results in None
+    if relative_path is None:
+        return None
+    if paths is None:
+        return None
+
+    # if we are given an absoulte path, return it if it exists
+    # otherwise return None
+    if pathlib.Path( relative_path ).is_absolute():
+        if pathlib.Path( relative_path ).exists():
+            return pathlib.Path( relative_path ).resolve().as_posix()
+        else:
+            return None
+
+    # Ok, check the path relative to the set of paths in order
+    # If it exists then return it as the path
+    for p in paths:
+        if pathlib.Path( p ).joinpath( relative_path ).exists():
+            return pathlib.Path( p ).joinpath( relative_path ).resolve().as_posix()
+    return None
+
+##============================================================================
+
+##
+# make sure a given directory exists
+def ensure_path( p ):
+    materialize_path = pathlib.Path( p ).resolve()
+    if not materialize_path.exists():
+        materialize_path.mkdir( parents=True )
+        materialize_path = materialize_path.as_posix()
+        logger.info( "  creating directory: '{0}'".format(
+            materialize_path ) )
+    return materialize_path
+
 ##============================================================================
 ##============================================================================
 ##============================================================================

@@ -1,0 +1,12 @@
+project:
+  shunt_paths:
+    - .
+    - source: git
+      destination: project-manager
+      args:
+        - https://github.com/velezj/project-manager.git
+  resources:
+    - controller.ovf
+    #- controller-disk001.vmdk
+  views:
+    - packer-controller.json
