@@ -1,0 +1,12 @@
+project:
+  shunt_paths:
+    - .
+  resources:
+    - salt
+  views:
+    - cluster.tf
+    - packer-bastion.json
+    - packer-salt-master.json
+    - packer-salt-minion.json
+    - salt-minion-etc-hosts
+    

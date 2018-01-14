@@ -1,0 +1,41 @@
+{% import 'variables' as variables %}
+
+{
+    "variables": {
+    },
+    "builders" : [{
+	"type": "amazon-ebs",
+	"profile": "{{ variables.aws_profile }}",
+	"region": "{{ variables.aws_region }}",
+	"source_ami_filter": {
+	    "filters": {
+		"virtualization-type": "hvm",
+		"name": "ubuntu/images/*ubuntu-xenial-16.04-amd64-server-*",
+		"root-device-type": "ebs"
+	    },
+	    "owners": ["099720109477"],
+	    "most_recent": true
+	},
+	"instance_type": "t2.micro",
+	"ssh_username": "ubuntu",
+	"ami_name": "{{ variables.project }} project-manager bastion {{timestamp}}",
+	"tags": {
+	    "Project" : "{{ variables.project }}",
+	    "Role" : "dev",
+	    "Automated" : "true",
+	    "Packer" : "true",
+	    "Salt" : "minion",
+	    "Bastion" : "true"
+	}
+    }],
+    "provisioners" : [
+	{
+	    "type": "shell",
+	    "inline" : [
+		"sleep 10",
+		"curl -L https://bootstrap.saltstack.com -o install_salt.sh",
+		"sudo sh install_salt.sh -P"
+	    ]
+	}
+    ]
+}

@@ -1,0 +1,9 @@
+{% set aws_profile = "javier.project-manager.devops" %}
+{% set aws_region = "us-east-2" %}
+{% set project = "example-1" %}
+{% set devops_key = "devops_key" %}
+
+{% set salt_master_instance_type = "t2.small" %}
+{% set salt_minion_instance_type = "t2.small" %}
+{% set bastion_instance_type = "t2.micro" %}
+{% set number_of_minions = 1 %}

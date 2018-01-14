@@ -36,10 +36,26 @@ def find_all_template_paths( start_path = '.' ):
 ##
 # Extract hte explicitly set template paths from the shutnfile
 def extract_template_paths_from_shuntfile( shuntfile_path ):
-    return shuntfile.shuntfile_get(
+    paths = shuntfile.shuntfile_get(
         shuntfile.load_shuntfile( shuntfile_path ),
         [ 'project', 'shunt_paths' ],
         [] )
+
+    # relative paths are relative to the shuntfile itself
+    ret = []
+    for p in paths:
+
+        if pathlib.Path( p ).is_absolute():
+            ret.append( p )
+            continue
+
+        j = pathlib.Path( shuntfile_path ).joinpath( p ).resolve().as_posix()
+        if not pathlib.Path( j ).is_dir():
+            ret.append( pathlib.Path( j ).parent.as_posix() )
+        else:
+            ret.append( pathlib.Path( j ).as_posix() )
+            
+    return ret
 
 ##============================================================================
 

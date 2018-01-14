@@ -28,10 +28,13 @@ def materialize_views( shuntfile_path, parents = None ):
     validate_shuntfile( sf )
     logger.info( "Shuntfile at '{0}' valid!".format( shuntfile_path ) )
 
-    # ensure materiale directory
+    # ensure materiale directory exists and is empty
     materialize_path = project_paths.materialize_path( sf, parents )
+    if pathlib.Path( materialize_path ).exists():
+        logger.info( "Emptying previous materialization directory '{0}'".format( materialize_path ) )
+        shutil.rmtree( materialize_path )
     materialize_path = ensure_path( materialize_path )
-
+    
     # ok, we want to take the template paths and process any which
     # need processing.
     # This is because we allow git,s3 and other URL type paths.
@@ -40,6 +43,7 @@ def materialize_views( shuntfile_path, parents = None ):
     template_paths = [ _materialize_path( p,
                                           materialize_path )
                        for p in template_paths ]
+    logger.info( "Template paths: {0}".format( template_paths ) )
 
 
     # ok, grab all of the resources and copy them
@@ -241,8 +245,12 @@ def _copy_resource( template_paths,
         target_path = pathlib.Path( materialize_path ).joinpath( target_path ).resolve().as_posix()
 
     # ok, copy the file
-    shutil.copyfile( source_path,
-                     target_path )
+    if pathlib.Path( source_path ).is_dir():
+        shutil.copytree( source_path,
+                        target_path )
+    else:
+        shutil.copyfile( source_path,
+                         target_path )
     logger.info( "copied resource '{0}' TO -> '{1}'".format(
         source_path,
         target_path ) )
@@ -296,3 +304,17 @@ def ensure_path( p ):
 ##============================================================================
 ##============================================================================
 ##============================================================================
+
+if __name__ == '__main__':
+
+    import logging
+    logging.basicConfig( level=logging.INFO )
+
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument( 'shuntfile' )
+
+    args = parser.parse_args()
+
+    sf_path = args.shuntfile
+    materialize_views( sf_path )
