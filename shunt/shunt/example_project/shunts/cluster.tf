@@ -342,3 +342,12 @@ resource "aws_eip" "bastion" {
   associate_with_private_ip = "10.0.0.100"
   depends_on                = ["aws_internet_gateway.main"]
 }
+
+
+####
+# OUTPUTS
+####
+
+output "eip" {
+  value = "${aws_eip.bastion.public_ip}"
+}
