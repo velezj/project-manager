@@ -3,6 +3,8 @@ project:
     - .
   resources:
     - salt
+    - javier.project-manager.devops.pub
+    - javier.project-manager.devops
   views:
     - cluster.tf
     - packer-bastion.json

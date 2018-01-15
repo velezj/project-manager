@@ -32,7 +32,7 @@ variable "salt_minion_ips" {
 
 resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/24"
-  enable_dns_hostnames = false
+  enable_dns_hostnames = true
   tags {
     Project = "{{ variables.project }}"
     Role = "dev"
@@ -163,9 +163,9 @@ resource "aws_security_group" "bastion" {
 
 }
 
-resource "aws_subnet" "main" {
+resource "aws_subnet" "public" {
   vpc_id = "${aws_vpc.main.id}"
-  cidr_block = "10.0.0.0/24"
+  cidr_block = "10.0.0.128/25"
   availability_zone = "{{ variables.aws_region }}a"
 
   map_public_ip_on_launch = false
@@ -177,11 +177,61 @@ resource "aws_subnet" "main" {
     Role = "dev"
     Automated = "true"
     Terraform = "true"
-    Name = "{{ variables.project }} dev-cluster-01 subnet main"
+    Name = "{{ variables.project }} dev-cluster-01 subnet public"
+  }
+}
+
+resource "aws_eip" "nat" {
+  vpc = true
+
+  associate_with_private_ip = "10.0.0.101"
+  depends_on                = ["aws_internet_gateway.main"]
+}
+
+resource "aws_subnet" "private" {
+  vpc_id = "${aws_vpc.main.id}"
+  cidr_block = "10.0.0.0/25"
+  availability_zone = "{{ variables.aws_region }}a"
+
+  map_public_ip_on_launch = false
+
+  depends_on = ["aws_internet_gateway.main"]
+  
+  tags {
+    Project = "{{ variables.project }}"
+    Role = "dev"
+    Automated = "true"
+    Terraform = "true"
+    Name = "{{ variables.project }} dev-cluster-01 subnet private"
   }
 }
 
 
+resource "aws_nat_gateway" "nat" {
+  allocation_id = "${aws_eip.nat.id}"
+  subnet_id = "${aws_subnet.public.id}"
+  depends_on = ["aws_internet_gateway.main"]
+}
+
+resource "aws_route_table" "nat-private-to-outside" {
+  vpc_id = "${aws_vpc.main.id}"
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = "${aws_nat_gateway.nat.id}"
+  }
+  tags {
+    Project = "{{ variables.project }}"
+    Role = "dev"
+    Automated = "true"
+    Terraform = "true"
+    Name = "{{ variables.project }} dev-cluster-01 route-table nat-private-to-outside"
+  }
+}
+
+resource "aws_route_table_association" "nat" {
+  subnet_id = "${aws_subnet.private.id}"
+  route_table_id = "${aws_route_table.nat-private-to-outside.id}"
+}
 
 ####
 # SSH KEYS
@@ -198,7 +248,7 @@ resource "aws_key_pair" "devops" {
 ####
 
 resource "aws_network_interface" "net" {
-  subnet_id = "${aws_subnet.main.id}"
+  subnet_id = "${aws_subnet.private.id}"
   private_ips = ["10.0.0.10"]
   security_groups = ["${aws_security_group.vpc_in_all_out.id}"]
   tags {
@@ -261,7 +311,7 @@ resource "aws_instance" "minion" {
   key_name = "${aws_key_pair.devops.key_name}"
 
   vpc_security_group_ids = ["${aws_security_group.vpc_in_all_out.id}"]
-  subnet_id = "${aws_subnet.main.id}"
+  subnet_id = "${aws_subnet.private.id}"
   private_ip = "${lookup(var.salt_minion_ips, count.index)}"
   
   tags {
@@ -280,8 +330,8 @@ resource "aws_instance" "minion" {
 ####
 
 resource "aws_network_interface" "bastion-net" {
-  subnet_id = "${aws_subnet.main.id}"
-  private_ips = ["10.0.0.100"]
+  subnet_id = "${aws_subnet.public.id}"
+  private_ips = ["10.0.0.200"]
   security_groups = ["${aws_security_group.bastion.id}"]
   tags {
     Project = "{{ variables.project }}"
@@ -294,6 +344,10 @@ resource "aws_network_interface" "bastion-net" {
 
 data "aws_route_table" "bastion" {
   vpc_id = "${aws_vpc.main.id}"
+  filter {
+    name = "association.main"
+    values = [ "true" ]
+  }
 }
 
 # make sure to actually *use* our internet gateway for the bastion hosts
@@ -339,7 +393,7 @@ resource "aws_eip" "bastion" {
   vpc = true
 
   instance                  = "${aws_instance.bastion.id}"
-  associate_with_private_ip = "10.0.0.100"
+  associate_with_private_ip = "10.0.0.200"
   depends_on                = ["aws_internet_gateway.main"]
 }
 
@@ -348,6 +402,10 @@ resource "aws_eip" "bastion" {
 # OUTPUTS
 ####
 
-output "eip" {
+output "bastion-ip" {
   value = "${aws_eip.bastion.public_ip}"
+}
+
+output "nat-ip" {
+  value = "${aws_eip.nat.public_ip}"
 }

@@ -10,7 +10,7 @@
 	ssh-keygen -t rsa -b 4096 -f javier.project-manager.devops
 	```
 
-- Apply the Shuntfile
+- Apply the Shuntfile from the project-manager/shunt/shunt directory
 
 	```bash
 	cd ..
