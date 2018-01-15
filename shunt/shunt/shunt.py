@@ -32,7 +32,7 @@ def materialize_views( shuntfile_path, parents = None ):
     materialize_path = project_paths.materialize_path( sf, parents )
     if pathlib.Path( materialize_path ).exists():
         logger.info( "Emptying previous materialization directory '{0}'".format( materialize_path ) )
-        shutil.rmtree( materialize_path )
+        _safe_empty_materialize_path( materialize_path )
     materialize_path = ensure_path( materialize_path )
     
     # ok, we want to take the template paths and process any which
@@ -300,6 +300,25 @@ def ensure_path( p ):
 
 ##============================================================================
 ##============================================================================
+
+##
+# *Safely* empty the materialization path.
+# This takes care of ensuring that the terraform state does not
+# contain any resources, otherwise throws and exception
+def _safe_empty_materialize_path( materialize_path ):
+
+    # ok, call terraform show and make sure nothing is shown
+    cmd = [ 'terraform', 'show', "-no-color" ]
+    donep = subprocess.run( cmd,
+                            cwd = materialize_path,
+                            stdout=subprocess.PIPE,
+                            check = True )
+    if len(donep.stdout.strip()) > 1:
+        raise RuntimeError( "Cannot not *safely* delete materialization path '{0}'. `terraform show` still returns resources being managed by terraform. Run `terraform destroy` first before trying to apply a shuntfile again! resources still shown = {1}".format( materialize_path, donep.stdout.strip() ) )
+
+    shutil.rmtree( materialize_path )
+        
+
 ##============================================================================
 ##============================================================================
 ##============================================================================
