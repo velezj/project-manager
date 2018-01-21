@@ -11,4 +11,5 @@ project:
     - packer-salt-master.json
     - packer-salt-minion.json
     - salt-minion-etc-hosts
+    - setup_env.sh
     

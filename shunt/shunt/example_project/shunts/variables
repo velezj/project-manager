@@ -1,7 +1,12 @@
+
 {% set aws_profile = "javier.33x.project-manager.devops" %}
 {% set aws_region = "us-east-2" %}
 {% set project = "example-1" %}
 {% set devops_key = "javier.project-manager.devops" %}
+
+{% set state_s3_bucket = "javier.state.terraform.33x" %}
+{% set state_s3_key = project + "/state/terraform.tfstate" %}
+{% set state_s3_region = aws_region %}
 
 {% set salt_master_instance_type = "t2.small" %}
 {% set salt_minion_instance_type = "t2.small" %}

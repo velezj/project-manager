@@ -7,21 +7,27 @@
 ### use bastion host:
 ### ssh -i financial-models-demo-devops-key -o ProxyCommand="ssh -i financial-models-demo-devops-key -W %h:%p ubuntu@<EIP=18.218.67.87>" ubuntu@<TARGET=10.0.0.2X>
 
+
 provider "aws" {
   profile = "{{ variables.aws_profile }}"
   region = "{{ variables.aws_region }}"
 }
 
+terraform {
+  backend "s3" {
+    bucket = "{{ variables.state_s3_bucket }}"
+    key    = "{{ variables.state_s3_key }}"
+    region = "{{ variables.state_s3_region }}"
+    profile = "{{ variables.aws_profile }}"
+  }
+}
+
+
 variable "salt_minion_ips" {
   default = {
-    "0" = "10.0.0.20"
-    "1" = "10.0.0.21"
-    "2" = "10.0.0.22"
-    "3" = "10.0.0.23"
-    "4" = "10.0.0.24"
-    "5" = "10.0.0.25"
-    "6" = "10.0.0.26"
-    "7" = "10.0.0.27"
+    {% for i in range( variables.number_of_minions ) %}
+    "{{ i }}" = "10.0.0.{{ 20 + i }}"
+    {% endfor %}
   }
 }
 
@@ -32,7 +38,9 @@ variable "salt_minion_ips" {
 
 resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/24"
+  enable_dns_support = true
   enable_dns_hostnames = true
+  
   tags {
     Project = "{{ variables.project }}"
     Role = "dev"
