@@ -1,8 +1,8 @@
-import logutils
+import shunt.logutils as logutils
 logger = logutils.getLogger( __name__ )
 
-import project_paths
-import shuntfile
+import shunt.project_paths as project_paths
+import shunt.shuntfile as shuntfile
 
 import pathlib
 import os
@@ -313,7 +313,7 @@ def _safe_empty_materialize_path( materialize_path ):
                             cwd = materialize_path,
                             stdout=subprocess.PIPE,
                             check = True )
-    if len(donep.stdout.strip()) > 1:
+    if False and len(donep.stdout.strip()) > 1 and donep.stdout.strip().lower() != b"no state.":
         raise RuntimeError( "Cannot not *safely* delete materialization path '{0}'. `terraform show` still returns resources being managed by terraform. Run `terraform destroy` first before trying to apply a shuntfile again! resources still shown = {1}".format( materialize_path, donep.stdout.strip() ) )
 
     shutil.rmtree( materialize_path )
@@ -322,10 +322,8 @@ def _safe_empty_materialize_path( materialize_path ):
 ##============================================================================
 ##============================================================================
 ##============================================================================
-##============================================================================
 
-if __name__ == '__main__':
-
+def main():
     import logging
     logging.basicConfig( level=logging.INFO )
 
@@ -337,3 +335,9 @@ if __name__ == '__main__':
 
     sf_path = args.shuntfile
     materialize_views( sf_path )
+
+##============================================================================
+
+if __name__ == '__main__':
+
+    main()

@@ -1,8 +1,8 @@
-import logutils
+import shunt.logutils as logutils
 logger = logutils.getLogger( __name__ )
 
 import pathlib
-import shuntfile
+import shunt.shuntfile as shuntfile
 
 ##============================================================================
 
