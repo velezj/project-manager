@@ -2,7 +2,7 @@ import shunt.logutils as logutils
 logger = logutils.getLogger( __name__ )
 
 import yaml
-import shunt.hmap as hamp
+import shunt.hmap as hmap
 
 SHUNT_FILENAME = "Shuntfile"
 
